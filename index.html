@@ -100,6 +100,7 @@
   var st={cfg:{},src:null,anc:null,uS:null,uA:null};
   function recompute(){
     var c=st.cfg||{};
+    try{document.getElementById('sub').textContent='DBG cfg='+JSON.stringify(c)+' | srcKeys='+JSON.stringify(st.src?Object.keys(st.src):null)+' | ancKeys='+JSON.stringify(st.anc?Object.keys(st.anc):null);}catch(e){}
     if(st.src&&c.label&&c.value&&st.src[c.label]&&st.src[c.value]){
       var labs=st.src[c.label], vals=st.src[c.value], d={};
       for(var i=0;i<labs.length;i++){ d[labs[i]]=(d[labs[i]]||0)+Number(vals[i]||0); }
