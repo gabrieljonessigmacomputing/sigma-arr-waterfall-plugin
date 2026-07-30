@@ -10,21 +10,23 @@
   html,body{height:100%}
   body{font-family:Inter,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:transparent;color:#1a2230;overflow:hidden}
   #wrap{height:100%;width:100%;display:flex;flex-direction:column;padding:12px 14px}
-  #ttl{font-size:15px;font-weight:600;color:#1a2230;margin-bottom:2px}
-  #sub{font-size:11px;color:#8a94a6;margin-bottom:6px}
+  #ttl{font-size:15px;font-weight:600}
+  #sub{font-size:11px;color:#8a94a6;margin-bottom:4px}
+  #dbg{font-size:9px;color:#c94;white-space:nowrap;overflow:hidden}
   #chart{flex:1;width:100%}
   svg{width:100%;height:100%;display:block}
-  .bar-label{font-size:11px;fill:#5a6474;font-weight:500}
-  .val-label{font-size:11px;font-weight:600}
-  .axis{stroke:#e6e9ef;stroke-width:1}
-  .axis-txt{font-size:10px;fill:#a4acbb}
-  .conn{stroke:#c7ccd6;stroke-width:1.5;stroke-dasharray:3 3}
+  .bl{font-size:11px;fill:#5a6474;font-weight:500}
+  .vl{font-size:11px;font-weight:600}
+  .ax{stroke:#e6e9ef;stroke-width:1}
+  .axt{font-size:10px;fill:#a4acbb}
+  .cn{stroke:#c7ccd6;stroke-width:1.5;stroke-dasharray:3 3}
 </style>
 </head>
 <body>
 <div id="wrap">
   <div id="ttl">ARR Activity Waterfall</div>
-  <div id="sub" id="sub"></div>
+  <div id="sub"></div>
+  <div id="dbg"></div>
   <div id="chart"><svg id="svg" preserveAspectRatio="xMidYMid meet"></svg></div>
 </div>
 <script>
@@ -34,7 +36,7 @@
     {name:'source',type:'element'},
     {name:'label',type:'column',source:'source',allowMultiple:false,label:'Activity'},
     {name:'value',type:'column',source:'source',allowMultiple:false,allowedTypes:['number','integer'],label:'Variance (delta)'},
-    {name:'anchor',type:'element',label:'Anchor element (Beginning/Ending)'},
+    {name:'anchor',type:'element',label:'Anchor element'},
     {name:'beginning',type:'column',source:'anchor',allowMultiple:false,allowedTypes:['number','integer'],label:'Beginning ARR'},
     {name:'ending',type:'column',source:'anchor',allowMultiple:false,allowedTypes:['number','integer'],label:'Ending ARR'},
     {name:'title',type:'text',label:'Title',defaultValue:'ARR Activity Waterfall'}
@@ -44,80 +46,64 @@
   var ORDER=['New','Expansion','Downsell','Churn'];
   function fmtM(v){ if(v==null||isNaN(v))return '—'; var a=Math.abs(v);
     var s=a>=1e9?(v/1e9).toFixed(2)+'B':a>=1e6?(v/1e6).toFixed(1)+'M':a>=1e3?(v/1e3).toFixed(0)+'K':Math.round(v).toString();
-    return (v<0?'-$':'$')+s.replace('-','');
-  }
-  function sum(a){return (a||[]).map(Number).filter(function(x){return !isNaN(x);}).reduce(function(x,y){return x+y;},0);}
+    return (v<0?'-$':'$')+s.replace('-','');}
+  function isArr(x){return Object.prototype.toString.call(x)==='[object Array]';}
+  function nums(a){return (a||[]).map(Number).filter(function(x){return !isNaN(x);});}
+  function sum(a){return nums(a).reduce(function(x,y){return x+y;},0);}
+  // find the text-array column and numeric-array columns in a data object
+  function textCol(d){for(var k in d){var a=d[k]; if(isArr(a)&&a.length&&a.some(function(v){return typeof v==='string';})) return k;} return null;}
+  function numCols(d){var r=[];for(var k in d){var a=d[k]; if(isArr(a)&&a.length&&a.every(function(v){return v===null||!isNaN(Number(v));})) r.push(k);} return r;}
 
-  function build(beginning,ending,deltas){
+  function render(cfg,beginning,ending,deltas,live){
+    document.getElementById('ttl').textContent=(cfg&&cfg.title)||'ARR Activity Waterfall';
+    document.getElementById('sub').textContent=(live?'':'PREVIEW · ')+'Comparison '+fmtM(beginning)+' → Ending '+fmtM(ending)+'  (net '+fmtM(ending-beginning)+')';
     var cats=[{label:'Comparison ARR',type:'total',value:beginning}];
     ORDER.forEach(function(k){ if(deltas[k]!==undefined && Math.round(deltas[k])!==0) cats.push({label:k,type:'delta',value:deltas[k]}); });
     cats.push({label:'Ending ARR',type:'total',value:ending});
-    return cats;
-  }
-  function render(cfg,beginning,ending,deltas){
-    document.getElementById('ttl').textContent=(cfg&&cfg.title)||'ARR Activity Waterfall';
-    document.getElementById('sub').textContent='Comparison '+fmtM(beginning)+'  →  Ending '+fmtM(ending)+'   (net '+fmtM(ending-beginning)+')';
-    var cats=build(beginning,ending,deltas);
-    var svg=document.getElementById('svg');
-    var W=svg.clientWidth||760, H=svg.clientHeight||300;
-    svg.setAttribute('viewBox','0 0 '+W+' '+H);
-    while(svg.firstChild) svg.removeChild(svg.firstChild);
-    var padL=54,padR=14,padT=16,padB=40, iw=W-padL-padR, ih=H-padT-padB;
-    // compute running tops
-    var run=0, tops=[], lo=0, hi=Math.max(beginning,ending);
-    cats.forEach(function(c){
-      if(c.type==='total'){ c.y0=0; c.y1=c.value; run=c.value; }
-      else { c.y0=run; c.y1=run+c.value; run=c.y1; }
-      lo=Math.min(lo,c.y0,c.y1); hi=Math.max(hi,c.y0,c.y1);
-    });
-    hi=hi*1.08; if(lo>0)lo=0; lo=lo*1.08;
-    function Y(v){ return padT + ih*(1-(v-lo)/(hi-lo)); }
-    var n=cats.length, gap=14, bw=(iw-gap*(n-1))/n;
-    var NS='http://www.w3.org/2000/svg';
+    var svg=document.getElementById('svg'),W=svg.clientWidth||760,H=svg.clientHeight||300;
+    svg.setAttribute('viewBox','0 0 '+W+' '+H); while(svg.firstChild)svg.removeChild(svg.firstChild);
+    var padL=54,padR=14,padT=16,padB=40,iw=W-padL-padR,ih=H-padT-padB,run=0,lo=0,hi=Math.max(beginning,ending);
+    cats.forEach(function(c){ if(c.type==='total'){c.y0=0;c.y1=c.value;run=c.value;} else {c.y0=run;c.y1=run+c.value;run=c.y1;} lo=Math.min(lo,c.y0,c.y1);hi=Math.max(hi,c.y0,c.y1);});
+    hi*=1.08; lo=lo>0?0:lo*1.08;
+    function Y(v){return padT+ih*(1-(v-lo)/(hi-lo));}
+    var n=cats.length,gap=14,bw=(iw-gap*(n-1))/n,NS='http://www.w3.org/2000/svg';
     function el(t,a){var e=document.createElementNS(NS,t);for(var k in a)e.setAttribute(k,a[k]);svg.appendChild(e);return e;}
-    // gridlines
-    [0,0.25,0.5,0.75,1].forEach(function(f){ var v=lo+(hi-lo)*f, y=Y(v);
-      el('line',{x1:padL,y1:y,x2:W-padR,y2:y,class:'axis'});
-      var t=el('text',{x:padL-6,y:y+3,class:'axis-txt','text-anchor':'end'}); t.textContent=fmtM(v);
-    });
+    [0,.25,.5,.75,1].forEach(function(f){var v=lo+(hi-lo)*f,y=Y(v);el('line',{x1:padL,y1:y,x2:W-padR,y2:y,class:'ax'});var t=el('text',{x:padL-6,y:y+3,class:'axt','text-anchor':'end'});t.textContent=fmtM(v);});
     var COL={total:'#1f4e79',up:'#1f9d63',down:'#d84a4a'};
-    cats.forEach(function(c,i){
-      var x=padL+i*(bw+gap);
-      var yTop=Y(Math.max(c.y0,c.y1)), yBot=Y(Math.min(c.y0,c.y1));
-      var col=c.type==='total'?COL.total:(c.value>=0?COL.up:COL.down);
-      el('rect',{x:x,y:yTop,width:bw,height:Math.max(2,yBot-yTop),rx:2,fill:col});
-      // connector to next
-      if(i<n-1){ var yc=Y(c.type==='total'?c.value:c.y1); el('line',{x1:x+bw,y1:yc,x2:x+bw+gap,y2:yc,class:'conn'}); }
-      // value label
-      var vt=el('text',{x:x+bw/2,y:yTop-5,class:'val-label','text-anchor':'middle',fill:col});
-      vt.textContent=(c.type==='delta'&&c.value>0?'+':'')+fmtM(c.value);
-      // category label
-      var lt=el('text',{x:x+bw/2,y:H-padB+16,class:'bar-label','text-anchor':'middle'});
-      lt.textContent=c.label;
-    });
+    cats.forEach(function(c,i){var x=padL+i*(bw+gap),yT=Y(Math.max(c.y0,c.y1)),yB=Y(Math.min(c.y0,c.y1)),col=c.type==='total'?COL.total:(c.value>=0?COL.up:COL.down);
+      el('rect',{x:x,y:yT,width:bw,height:Math.max(2,yB-yT),rx:2,fill:col});
+      if(i<n-1){var yc=Y(c.type==='total'?c.value:c.y1);el('line',{x1:x+bw,y1:yc,x2:x+bw+gap,y2:yc,class:'cn'});}
+      var vt=el('text',{x:x+bw/2,y:yT-5,class:'vl','text-anchor':'middle',fill:col});vt.textContent=(c.type==='delta'&&c.value>0?'+':'')+fmtM(c.value);
+      var lt=el('text',{x:x+bw/2,y:H-padB+16,class:'bl','text-anchor':'middle'});lt.textContent=c.label;});
   }
 
   var st={cfg:{},src:null,anc:null,uS:null,uA:null};
   function recompute(){
     var c=st.cfg||{};
-    try{document.getElementById('sub').textContent='DBG cfg='+JSON.stringify(c)+' | srcKeys='+JSON.stringify(st.src?Object.keys(st.src):null)+' | ancKeys='+JSON.stringify(st.anc?Object.keys(st.anc):null);}catch(e){}
-    if(st.src&&c.label&&c.value&&st.src[c.label]&&st.src[c.value]){
-      var labs=st.src[c.label], vals=st.src[c.value], d={};
-      for(var i=0;i<labs.length;i++){ d[labs[i]]=(d[labs[i]]||0)+Number(vals[i]||0); }
-      var beg=0,end=0;
-      if(st.anc&&c.beginning&&st.anc[c.beginning]) beg=sum(st.anc[c.beginning]);
-      if(st.anc&&c.ending&&st.anc[c.ending]) end=sum(st.anc[c.ending]);
-      if(!end){ end=beg; ORDER.forEach(function(k){end+=(d[k]||0);}); }
-      render(c,beg,end,d); return;
+    var dbg='cfg='+JSON.stringify(c)+' | src='+(st.src?JSON.stringify(Object.keys(st.src)):'null')+' | anc='+(st.anc?JSON.stringify(Object.keys(st.anc)):'null');
+    try{document.getElementById('dbg').textContent=dbg;}catch(e){}
+    if(st.src){
+      var lk=(c.label&&st.src[c.label])?c.label:textCol(st.src);
+      var vk=(c.value&&st.src[c.value])?c.value:(numCols(st.src)[0]);
+      if(lk&&vk&&st.src[lk]&&st.src[vk]){
+        var labs=st.src[lk],vals=st.src[vk],d={};
+        for(var i=0;i<labs.length;i++){d[labs[i]]=(d[labs[i]]||0)+Number(vals[i]||0);}
+        var beg=0,end=0;
+        if(st.anc){var ncs=numCols(st.anc);
+          beg=(c.beginning&&st.anc[c.beginning])?sum(st.anc[c.beginning]):(ncs[0]?sum(st.anc[ncs[0]]):0);
+          end=(c.ending&&st.anc[c.ending])?sum(st.anc[c.ending]):(ncs[1]?sum(st.anc[ncs[1]]):0);
+        }
+        if(!end){end=beg;ORDER.forEach(function(k){end+=(d[k]||0);});}
+        render(c,beg,end,d,true); return;
+      }
     }
-    // synthetic standalone preview
-    render(c,216240846,218521362,{New:6100000,Expansion:9200000,Downsell:-6900000,Churn:-6120000});
+    render(c,190000000,205000000,{New:1000000,Expansion:2000000,Downsell:-3000000,Churn:-4000000},false);
   }
   if(client){
-    client.config.subscribe(function(config){ st.cfg=config||{};
+    client.config.subscribe(function(config){st.cfg=config||{};
       if(st.uS){st.uS();st.uS=null;} if(st.uA){st.uA();st.uA=null;}
-      if(config&&config.source) st.uS=client.elements.subscribeToElementData(config.source,function(d){st.src=d;recompute();});
-      if(config&&config.anchor) st.uA=client.elements.subscribeToElementData(config.anchor,function(d){st.anc=d;recompute();});
+      if(config&&config.source)st.uS=client.elements.subscribeToElementData(config.source,function(d){st.src=d;recompute();});
+      if(config&&config.anchor)st.uA=client.elements.subscribeToElementData(config.anchor,function(d){st.anc=d;recompute();});
       recompute();
     });
   } else { recompute(); }
