@@ -12,7 +12,6 @@
   #wrap{height:100%;width:100%;display:flex;flex-direction:column;padding:12px 14px}
   #ttl{font-size:15px;font-weight:600}
   #sub{font-size:11px;color:#8a94a6;margin-bottom:4px}
-  #dbg{font-size:9px;color:#c94;white-space:nowrap;overflow:hidden}
   #chart{flex:1;width:100%}
   svg{width:100%;height:100%;display:block}
   .bl{font-size:11px;fill:#5a6474;font-weight:500}
@@ -26,7 +25,6 @@
 <div id="wrap">
   <div id="ttl">ARR Activity Waterfall</div>
   <div id="sub"></div>
-  <div id="dbg"></div>
   <div id="chart"><svg id="svg" preserveAspectRatio="xMidYMid meet"></svg></div>
 </div>
 <script>
@@ -80,8 +78,6 @@
   var st={cfg:{},src:null,anc:null,uS:null,uA:null};
   function recompute(){
     var c=st.cfg||{};
-    var dbg='cfg='+JSON.stringify(c)+' | src='+(st.src?JSON.stringify(Object.keys(st.src)):'null')+' | anc='+(st.anc?JSON.stringify(Object.keys(st.anc)):'null');
-    try{document.getElementById('dbg').textContent=dbg;}catch(e){}
     if(st.src){
       var lk=(c.label&&st.src[c.label])?c.label:textCol(st.src);
       var vk=(c.value&&st.src[c.value])?c.value:(numCols(st.src)[0]);
@@ -97,7 +93,7 @@
         render(c,beg,end,d,true); return;
       }
     }
-    render(c,190000000,205000000,{New:1000000,Expansion:2000000,Downsell:-3000000,Churn:-4000000},false);
+    render(c,216240846,218521362,{New:2627070,Expansion:11558679,Downsell:-6292599,Churn:-5612633},false);
   }
   if(client){
     client.config.subscribe(function(config){st.cfg=config||{};
